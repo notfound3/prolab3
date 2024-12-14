@@ -41,7 +41,7 @@ class Graf:
 
 # Veri setini okuma
 try:
-    df = pd.read_excel(data_path, nrows=1000)  # İlk 1000 satırı oku
+    df = pd.read_excel(data_path)  # Veri setini oku
     print(f"'{data_path}' başarıyla okundu.")
 except FileNotFoundError:
     print(f"'{data_path}' dosyası bulunamadı.")
@@ -54,29 +54,25 @@ except Exception as e:
 df.columns = df.columns.str.strip()
 
 # Gerekli sütunların kontrolü
-required_columns = {'paper_title', 'author_name', 'coauthors'}
+required_columns = {'Makale Adı', 'Yazarlar', 'DOI'}
 if not required_columns.issubset(df.columns):
     print(f"Gerekli sütunlar eksik: {required_columns - set(df.columns)}")
     exit()
 
 # Boş verileri temizle
-df.dropna(subset=['paper_title', 'author_name', 'coauthors'], inplace=True)
+df.dropna(subset=['Makale Adı', 'Yazarlar'], inplace=True)
 
 # Graf nesnesi oluştur
 graf = Graf()
 
 # DataFrame'deki her satırı işle
 for _, row in df.iterrows():
-    makale_baslik = row['paper_title']
-    author_name = row['author_name'].strip()
+    makale_baslik = row['Makale Adı']
     try:
-        coauthors = [coauthor.strip() for coauthor in row['coauthors'].strip('[]').split(',')]
+        yazarlar = [yazar.strip() for yazar in row['Yazarlar'].strip('[]').split(',')]
     except AttributeError:
-        print(f"Coauthors sütununda çözümleme hatası: {row['coauthors']}")
+        print(f"Yazarlar sütununda çözümleme hatası: {row['Yazarlar']}")
         continue
-
-    # Yazarlar listesini oluştur
-    yazarlar = [author_name] + coauthors
 
     # Yazar nesnelerini oluştur ve grafa düğüm olarak ekle
     makale_yazarlari = []
@@ -99,15 +95,33 @@ for _, row in df.iterrows():
             graf.kenar_ekle(makale_yazarlari[i], makale_yazarlari[j])
 
 # Pyvis ile grafi görselleştir
-net = Network(height='750px', width='100%', notebook=True)
+net = Network(height='750px', width='100%', notebook=True, directed=False)
+
+# Yazarların makale sayıları
+yazar_makale_sayilari = {yazar.isim: len(yazar.makaleler) for yazar in graf.dugumler.values()}
+ortalama_makale_sayisi = sum(yazar_makale_sayilari.values()) / len(yazar_makale_sayilari)
 
 # Düğümleri ekle
 for dugum in graf.dugumler.values():
-    net.add_node(dugum.isim, label=dugum.isim, title=f"{dugum.isim}\nMakaleler: {', '.join(dugum.makaleler)}")
+    makale_sayisi = len(dugum.makaleler)
+    # Yazarın düğüm boyutunu ve rengini ayarla
+    if makale_sayisi > 1.2 * ortalama_makale_sayisi:
+        size = 20  # Daha büyük düğüm
+        color = 'darkred'  # Koyu renk
+    elif makale_sayisi < 0.8 * ortalama_makale_sayisi:
+        size = 10  # Daha küçük düğüm
+        color = 'lightblue'  # Açık renk
+    else:
+        size = 15  # Ortalama boyut
+        color = 'orange'  # Orta renk
+    
+    net.add_node(dugum.isim, label=dugum.isim, title=f"{dugum.isim}\nMakaleler: {', '.join(dugum.makaleler)}", size=size, color=color)
 
 # Kenarları ekle
 for kenar in graf.kenarlar:
-    net.add_edge(kenar[0], kenar[1])
+    # Kenar ağırlığı, ortak makale sayısı kadar olacak şekilde belirleniyor
+    ortak_makale_sayisi = sum([1 for row in df.itertuples() if kenar[0] in row.Yazarlar and kenar[1] in row.Yazarlar])
+    net.add_edge(kenar[0], kenar[1], weight=ortak_makale_sayisi)
 
 # Grafı kaydet ve göster
 output_path = os.path.join(current_dir, 'yazarlar_graf.html')
