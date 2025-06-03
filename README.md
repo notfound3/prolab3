@@ -1,1 +1,1 @@
-# prolab3
+# Yazar işbirliği ve akademik sistem
